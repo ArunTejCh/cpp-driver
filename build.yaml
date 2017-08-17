@@ -83,16 +83,16 @@ release:
             if [ "${DISTRO}" = "ubuntu" ]; then
               ./build_deb.sh
               pushd build/
-              curl -$ARTIFACTORY_CREDS -T "{$(echo *.deb | tr ' ' ',')}" "https://datastax.jfrog.io/datastax/cpp-dse-driver/builds/{$BUILD_NUMBER}/$DISTRO/$RELEASE/dse/v$version/"
+              curl -$ARTIFACTORY_CREDS -T "{$(echo *.deb | tr ' ' ',')}" "https://datastax.jfrog.io/datastax/cpp-dse-driver/core/builds/{$BUILD_NUMBER}/$DISTRO/$RELEASE/dse/v$version/"
               popd
             elif [ "${DISTRO}" = "centos" ]; then 
               ./build_rpm.sh
               pushd build/RPMS/x86_64
-              curl -$ARTIFACTORY_CREDS -T "{$(echo *.rpm | tr ' ' ',')}" "https://datastax.jfrog.io/datastax/cpp-dse-driver/builds/{$BUILD_NUMBER}/$DISTRO/$RELEASE/dse/v$version/"
+              curl -$ARTIFACTORY_CREDS -T "{$(echo *.rpm | tr ' ' ',')}" "https://datastax.jfrog.io/datastax/cpp-dse-driver/core/builds/{$BUILD_NUMBER}/$DISTRO/$RELEASE/dse/v$version/"
               popd
             fi
 
             # Uploading libuv packages
             pushd packages/
-            curl -$ARTIFACTORY_CREDS -T "{$(echo libuv* | tr ' ' ',')}" "https://datastax.jfrog.io/datastax/cpp-dse-driver/builds/{$BUILD_NUMBER}/$DISTRO/$RELEASE/dependencies/libuv/v$LIBUV_VERSION/"
+            curl -$ARTIFACTORY_CREDS -T "{$(echo libuv* | tr ' ' ',')}" "https://datastax.jfrog.io/datastax/cpp-dse-driver/core/builds/{$BUILD_NUMBER}/$DISTRO/$RELEASE/dependencies/libuv/v$LIBUV_VERSION/"
             popd
