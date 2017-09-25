@@ -71,7 +71,7 @@ release:
             pushd packages
 
             # Install cpp-driver packages
-            sudo ${PACKAGE_INSTALL} cassandra*.${PACKAGE_TYPE}
+            # sudo ${PACKAGE_INSTALL} cassandra*.${PACKAGE_TYPE}
 
             # Create test file against cpp-driver and try to connect. Should compile and throw a connection error when executed
             cat > test.cpp <<EOF
@@ -150,6 +150,7 @@ release:
             EOF
             g++ test.cpp -o test.out -lcassandra
             ./test.out
+            rm test.*
 
             # Uploading driver packages
             curl -$ARTIFACTORY_CREDS -T "{$(echo cassandra-cpp-driver* | tr ' ' ',')}" "https://datastax.jfrog.io/datastax/cpp-php-drivers/cpp-driver/builds/{$BUILD_NUMBER}/$DISTRO/$RELEASE/cassandra/v$version/" 
