@@ -1,0 +1,160 @@
+schedules:
+  adhoc:
+    schedule: adhoc
+    branches:
+      include: [master] 
+architecture:
+  - x64
+os:
+  - ubuntu/trusty64/cpp
+  - ubuntu/xenial64
+  - centos/6-64
+  - centos/7-64
+build:
+  - script: |
+      echo "Running packaging job"
+package:
+  include: # list of files and glob paths to include in the artifact, relative to the current working directory
+    - packaging/packages/*
+release:
+    after:
+      each:
+        - script: |
+            LIBUV_VERSION=1.14.0
+            TOKENS=($(echo ${OS_VERSION} | tr "/" " "))
+            DISTRO=${TOKENS[0]}
+            RELEASE=${TOKENS[1]}
+
+            if [ "${DISTRO}" = "ubuntu" ]; then
+              NAME=$(echo ${RELEASE%??})
+              ARCHITECTURE=${RELEASE:-2}
+              PACKAGE_TYPE=deb
+              PACKAGE_INSTALL="dpkg -i"
+              if [ "${NAME}" = "trusty" ]; then
+                RELEASE=14.04
+              elif [ "${NAME}" = "xenial" ]; then
+                RELEASE=16.04
+              else
+                printf "Unsupported Ubuntu Version: %s\n" ${RELEASE}
+                exit 1
+              fi
+            elif [ "${DISTRO}" = "centos" ]; then
+              TOKENS=($(echo ${RELEASE} | tr "-" " "))
+              NAME=${DISTRO}
+              RELEASE=${TOKENS[0]}
+              ARCHITECTURE=${TOKENS[1]}
+              PACKAGE_TYPE=rpm
+              PACKAGE_INSTALL="rpm -i"
+            else
+              printf "Unsupported OS: %s\n" ${OS_VERSION}
+              exit 1
+            fi
+
+            pushd packaging
+            
+            mkdir packages
+
+            # Build libuv, install, and copy to "packages"
+            echo "Building libuv Packages [${LIBUV_VERSION}] ...\n"
+            git clone --depth 1 https://github.com/mpenick/libuv-packaging.git libuv-packaging
+            
+            pushd libuv-packaging
+            ./build_${PACKAGE_TYPE}.sh ${LIBUV_VERSION}
+            popd
+            find libuv-packaging/build -type f -name "*.${PACKAGE_TYPE}" -exec mv {} packages \;
+            sudo ${PACKAGE_INSTALL} packages/libuv*.${PACKAGE_TYPE}
+
+            # Build, package and upload DataStax C/C++ driver
+            echo "Building DataStax C/C++ driver ..."
+            ./build_${PACKAGE_TYPE}.sh
+            find build -type f -name "*.${PACKAGE_TYPE}" -exec mv {} packages \;
+            pushd packages
+
+            # Install cpp-driver packages
+            # sudo ${PACKAGE_INSTALL} cassandra*.${PACKAGE_TYPE}
+
+            # Create test file against cpp-driver and try to connect. Should compile and throw a connection error when executed
+            cat > test.cpp <<EOF
+            #include <cassandra.h>
+            #include <stdio.h>
+
+            int main(int argc, char* argv[]) {
+            /* Setup and connect to cluster */
+            CassFuture* connect_future = NULL;
+            CassCluster* cluster = cass_cluster_new();
+            CassSession* session = cass_session_new();
+            char* hosts = "127.0.0.1";
+            if (argc > 1) {
+              hosts = argv[1];
+            }
+
+            /* Add contact points */
+            cass_cluster_set_contact_points(cluster, hosts);
+
+            /* Provide the cluster object as configuration to connect the session */
+            connect_future = cass_session_connect(session, cluster);
+
+            if (cass_future_error_code(connect_future) == CASS_OK) {
+            CassFuture* close_future = NULL;
+
+            /* Build statement and execute query */
+            const char* query = "SELECT release_version FROM system.local";
+            CassStatement* statement = cass_statement_new(query, 0);
+
+            CassFuture* result_future = cass_session_execute(session, statement);
+
+            if (cass_future_error_code(result_future) == CASS_OK) {
+              /* Retrieve result set and get the first row */
+              const CassResult* result = cass_future_get_result(result_future);
+              const CassRow* row = cass_result_first_row(result);
+
+              if (row) {
+                const CassValue* value = cass_row_get_column_by_name(row, "release_version");
+
+                const char* release_version;
+                size_t release_version_length;
+                cass_value_get_string(value, &release_version, &release_version_length);
+                printf("release_version: '%.*s'\n", (int)release_version_length, release_version);
+              }
+
+               cass_result_free(result);
+            } else {
+              /* Handle error */
+              const char* message;
+              size_t message_length;
+              cass_future_error_message(result_future, &message, &message_length);
+              fprintf(stderr, "Unable to run query: '%.*s'\n", (int)message_length, message);
+            }
+
+            cass_statement_free(statement);
+            cass_future_free(result_future);
+
+            /* Close the session */
+            close_future = cass_session_close(session);
+            cass_future_wait(close_future);
+            cass_future_free(close_future);
+            } else {
+            /* Handle error */
+            const char* message;
+            size_t message_length;
+            cass_future_error_message(connect_future, &message, &message_length);
+            fprintf(stderr, "Unable to connect: '%.*s'\n", (int)message_length, message);
+            }
+
+            cass_future_free(connect_future);
+            cass_cluster_free(cluster);
+            cass_session_free(session);
+
+            return 0;
+            }
+            EOF
+            g++ test.cpp -o test.out -lcassandra
+            ./test.out
+            rm test.*
+
+            # Uploading driver packages
+            curl -$ARTIFACTORY_CREDS -T "{$(echo cassandra-cpp-driver* | tr ' ' ',')}" "https://datastax.jfrog.io/datastax/cpp-php-drivers/cpp-driver/builds/{$BUILD_NUMBER}/$DISTRO/$RELEASE/cassandra/v$version/" 
+
+            # Uploading libuv packages
+            curl -$ARTIFACTORY_CREDS -T "{$(echo libuv* | tr ' ' ',')}" "https://datastax.jfrog.io/datastax/cpp-php-drivers/cpp-driver/builds/{$BUILD_NUMBER}/$DISTRO/$RELEASE/dependencies/libuv/v$LIBUV_VERSION/"
+            popd
