@@ -71,7 +71,7 @@ release:
             pushd packages
 
             # Install cpp-driver packages
-            # sudo ${PACKAGE_INSTALL} cassandra*.${PACKAGE_TYPE}
+            sudo ${PACKAGE_INSTALL} cassandra*.${PACKAGE_TYPE}
 
             # Create test file against cpp-driver and try to connect. Should compile and throw a connection error when executed
             cat > test.cpp <<EOF
