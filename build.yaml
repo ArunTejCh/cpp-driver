@@ -148,8 +148,17 @@ release:
             return 0;
             }
             EOF
+            
+            # Throw error if either compilation or test run fails
             g++ test.cpp -o test.out -lcassandra
+            if [[ $? -ne 0 ]] ; then
+              exit 1
+            fi
+            
             ./test.out
+            if [[ $? -ne 0 ]] ; then
+              exit 1
+            fi
             rm test.*
 
             # Uploading driver packages
